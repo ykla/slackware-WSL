@@ -158,7 +158,9 @@ base_pkgs="a/aaa_base \
 	n/net-tools \
 	a/findutils \
 	n/iproute2 \
-	n/openssl"
+	n/openssl \
+	l/glibc-i18n \
+	a/glibc-zoneinfo"
 
 # ---- Build ----
 mkdir -p "$ROOTFS" "$CACHEFS"
@@ -307,6 +309,29 @@ touch etc/resolv.conf
 echo 'export TERM=linux' >> etc/profile.d/term.sh
 chmod +x etc/profile.d/term.sh
 echo '. /etc/profile' > .bashrc
+
+# Configure Simplified Chinese locale
+if localedef --list-archive 2>/dev/null | grep -q 'zh_CN'; then
+	echo 'zh_CN.UTF-8 UTF-8' > etc/locale.nopurge
+else
+	# Generate zh_CN.UTF-8 locale from glibc-i18n
+	if [[ -d usr/lib/locale ]]; then
+		localedef -i zh_CN -f UTF-8 zh_CN.UTF-8 2>/dev/null || true
+	fi
+	echo 'zh_CN.UTF-8 UTF-8' > etc/locale.nopurge
+fi
+cat > etc/profile.d/lang.sh << 'LOCALE'
+export LANG=zh_CN.UTF-8
+export LC_ALL=zh_CN.UTF-8
+LOCALE
+chmod +x etc/profile.d/lang.sh
+
+# Set timezone to Asia/Shanghai
+if [[ -f usr/share/zoneinfo/Asia/Shanghai ]]; then
+	ln -sf /usr/share/zoneinfo/Asia/Shanghai etc/localtime
+	echo 'Asia/Shanghai' > etc/timezone
+fi
+
 echo "${MIRROR}/${RELEASE}/" >> etc/slackpkg/mirrors
 sed -i \
 	-e 's/DIALOG=on/DIALOG=off/' \
