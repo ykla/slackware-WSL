@@ -156,7 +156,7 @@ base_pkgs="a/aaa_base \
 	l/zlib \
 	ap/nano \
 	a/elvis \
-	ap/less \
+	a/less \
 	ap/slackpkg \
 	l/ncurses \
 	a/bin \
@@ -187,35 +187,34 @@ base_pkgs="a/aaa_base \
 	a/glibc-zoneinfo \
 	n/rsync \
 	l/lz4 \
-	l/xxhash \
+	l/xxHash \
 	l/popt \
-	l/libgpg-error \
-	l/libgcrypt \
-	l/libassuan \
-	l/libksba \
-	l/libcom_err \
+	n/libgpg-error \
+	n/libgcrypt \
+	n/libassuan \
+	n/libksba \
 	a/e2fsprogs \
-	l/npth \
+	n/npth \
 	l/libssh2 \
-	l/nghttp2 \
+	n/nghttp2 \
 	l/brotli \
 	l/libidn2 \
 	l/zstd \
-	l/attr \
-	l/acl \
+	a/attr \
+	a/acl \
 	l/expat \
 	l/gdbm \
 	l/jsoncpp \
 	l/libarchive \
 	l/libcap \
 	l/libffi \
-	l/libmnl \
+	n/libmnl \
 	l/libuv \
 	l/lzo \
 	l/mpdecimal \
 	l/rhash \
-	ap/db48 \
-	ap/pinentry \
+	l/db48 \
+	n/pinentry \
 	ap/sqlite \
 	d/cmake \
 	d/perl \
