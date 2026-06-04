@@ -194,7 +194,7 @@ base_pkgs="a/aaa_base \
 	l/libassuan \
 	l/libksba \
 	l/libcom_err \
-	l/e2fsprogs \
+	a/e2fsprogs \
 	l/npth \
 	l/libssh2 \
 	l/nghttp2 \
