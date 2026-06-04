@@ -53,11 +53,28 @@ fetch_package_paths() {
 	local url="${MIRROR}/${RELEASE}/${relbase}/FILE_LIST"
 	echo "Fetching package list from ${url}" >&2
 	if ! curl -fsSL "${url}" > "${tmp_file}"; then
-		echo "ERROR: failed to fetch FILE_LIST" >&2
+		echo "ERROR: failed to fetch FILE_LIST from ${url}" >&2
 		rm -f "${tmp_file}"
 		return 1
 	fi
-	grep '\.t\.z$' "${tmp_file}" | awk '{ print $8 }' | sed 's|^\./||'
+	local file_size
+	file_size=$(wc -c < "${tmp_file}")
+	echo "Downloaded FILE_LIST (${file_size} bytes)" >&2
+	if [[ "${file_size}" -eq 0 ]]; then
+		echo "ERROR: FILE_LIST is empty" >&2
+		rm -f "${tmp_file}"
+		return 1
+	fi
+	local count
+	count=$(grep -c '\.t\.z$' "${tmp_file}") || count=0
+	echo "Found ${count} packages in FILE_LIST" >&2
+	if [[ "${count}" -eq 0 ]]; then
+		echo "ERROR: no packages found in FILE_LIST" >&2
+		head -20 "${tmp_file}" >&2
+		rm -f "${tmp_file}"
+		return 1
+	fi
+	grep '\.t\.z$' "${tmp_file}" | awk '{ print $8 }' | sed 's|^\./||' || true
 	rm -f "${tmp_file}"
 }
 
@@ -153,6 +170,12 @@ fi
 paths_file="${CACHEFS}/paths"
 if [[ ! -f "${paths_file}" ]]; then
 	fetch_package_paths > "${paths_file}"
+fi
+paths_count=$(wc -l < "${paths_file}")
+echo "Package paths cached: ${paths_count} entries" >&2
+if [[ "${paths_count}" -eq 0 ]]; then
+	echo "ERROR: no package paths available, aborting" >&2
+	exit 1
 fi
 
 # Install base packages
