@@ -193,6 +193,8 @@ base_pkgs="a/aaa_base \
 	l/libgcrypt \
 	l/libassuan \
 	l/libksba \
+	l/libcom_err \
+	l/e2fsprogs-libs \
 	l/npth \
 	l/libssh2 \
 	l/nghttp2 \
