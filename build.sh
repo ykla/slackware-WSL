@@ -157,7 +157,7 @@ fi
 
 # Install base packages
 for pkg in ${base_pkgs}; do
-	path=$(grep "^${pkg}" "${paths_file}" | head -1) || true
+	path=$(grep "^${pkg}.*\.t.z$" "${paths_file}" | head -1) || true
 	if [[ -z "${path}" ]]; then
 		echo "SKIP: ${pkg} not found in package list" >&2
 		continue
