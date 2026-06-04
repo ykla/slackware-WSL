@@ -478,7 +478,22 @@ fi
 # Regenerate CA certificate bundle inside chroot
 # This creates /etc/ssl/certs/ca-certificates.crt which wget uses for verification
 LOG_STEP "Setting up CA certificates"
-chroot . /usr/sbin/update-ca-certificates --fresh 2>/dev/null || true
+mkdir -p etc/ssl/certs
+
+chroot . sh -c '
+	if command -v update-ca-certificates >/dev/null 2>&1; then
+		update-ca-certificates --fresh
+	fi
+' || true
+
+if [[ ! -f etc/ssl/certs/ca-certificates.crt ]]; then
+	if [[ -f etc/ssl/cert.pem ]]; then
+		cp etc/ssl/cert.pem etc/ssl/certs/ca-certificates.crt
+	else
+		find etc/ssl/certs -name "*.pem" -exec cat {} + \
+			> etc/ssl/certs/ca-certificates.crt 2>/dev/null || true
+	fi
+fi
 
 # Verify CA bundle exists
 if [[ -f etc/ssl/certs/ca-certificates.crt ]]; then
