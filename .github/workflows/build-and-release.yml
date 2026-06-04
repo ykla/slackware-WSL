@@ -19,7 +19,7 @@ jobs:
         run: sudo VERSION=${{ matrix.version }} bash build.sh
 
       - name: 上传产物 (${{ matrix.version }})
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: slackware-${{ matrix.version }}
           path: '*.tar.gz'
@@ -31,12 +31,12 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           name: slackware-15.0
           path: artifacts
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           name: slackware-current
           path: artifacts
