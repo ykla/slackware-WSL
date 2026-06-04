@@ -5,58 +5,63 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Slackware 版本'
-        required: true
-        default: 'current'
-        type: choice
-        options:
-          - '15.0'
-          - '14.2'
-          - 'current'
 
 jobs:
-  build-and-release:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        version: ['15.0', 'current']
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: 构建镜像 (${{ matrix.version }})
+        run: sudo make VERSION=${{ matrix.version }}
+
+      - name: 上传产物 (${{ matrix.version }})
+        uses: actions/upload-artifact@v4
+        with:
+          name: slackware-${{ matrix.version }}
+          path: '*.tar.gz'
+          retention-days: 1
+
+  release:
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: slackware-15.0
+          path: artifacts
 
-      - name: 确定版本号和 tag
-        id: vars
+      - uses: actions/download-artifact@v4
+        with:
+          name: slackware-current
+          path: artifacts
+
+      - name: 确定 tag 名
+        id: tag
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then
-            VER=$(echo "${{ github.ref_name }}" | sed 's/^v//')
-            TAG="${{ github.ref_name }}"
+            echo "name=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
           else
-            VER="${{ github.event.inputs.version }}"
-            TAG="auto-${VER}-${{ github.run_number }}"
+            echo "name=auto-${{ github.run_number }}" >> "$GITHUB_OUTPUT"
           fi
-          echo "version=${VER}" >> "$GITHUB_OUTPUT"
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-
-      - name: 构建镜像
-        run: sudo make VERSION=${{ steps.vars.outputs.version }}
-
-      - name: 获取产物文件名
-        id: artifact
-        run: |
-          ARCHIVE=$(ls *.tar.gz | head -1)
-          echo "name=${ARCHIVE}" >> "$GITHUB_OUTPUT"
 
       - name: 创建 Release
         uses: softprops/action-gh-release@v3
         with:
-          files: '${{ steps.artifact.outputs.name }}'
-          tag_name: ${{ steps.vars.outputs.tag }}
-          name: Slackware ${{ steps.vars.outputs.version }} (Build #${{ github.run_number }})
+          files: 'artifacts/*.tar.gz'
+          tag_name: ${{ steps.tag.outputs.name }}
+          name: Slackware WSL (Build #${{ github.run_number }})
           generate_release_notes: true
           body: |
-            Slackware ${{ steps.vars.outputs.version }} WSL 最小化文件系统镜像。
+            Slackware 15.0 / current WSL 最小化文件系统镜像。
 
             ### 使用方法
+            以 15.0 为例：
             ```shell
-            lxrunoffline i -n Slackware${{ steps.vars.outputs.version }} -d D:\\WSL\\Slackware${{ steps.vars.outputs.version }} -f ${{ steps.artifact.outputs.name }}
+            lxrunoffline i -n Slackware -d D:\\WSL\\Slackware -f slackware64-15.0.tar.gz
             ```

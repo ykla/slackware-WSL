@@ -57,7 +57,7 @@ main() {
     local ret
 
     mirror="${MIRROR:-http://mirrors.ustc.edu.cn/slackware}"
-    release="${RELEASE:-slackware64-14.2}"
+    release="${RELEASE:-slackware64-15.0}"
 
     while getopts ":hm:r:t" opts ; do
         case "${opts}" in
