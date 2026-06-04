@@ -72,15 +72,4 @@ jobs:
           name: Slackware WSL (Build #${{ github.run_number }})
           generate_release_notes: true
           body: |
-            Slackware 15.0 / current (x86_64) + current (aarch64) WSL 最小化文件系统镜像。
-
-            ### 使用方法
-            以 15.0 x86_64 为例：
-            ```shell
-            lxrunoffline i -n Slackware -d D:\\WSL\\Slackware -f slackware64-15.0.tar.gz
-            ```
-
-            以 current aarch64 为例：
-            ```shell
-            lxrunoffline i -n Slackware -d D:\\WSL\\Slackware -f slackwareaarch64-current.tar.gz
-            ```
+            Slackware 15.0 (x86_64 ) / current (x86_64 & aarch64) 基本系统，FreeBSD 兼容层用。
