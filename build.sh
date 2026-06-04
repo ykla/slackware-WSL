@@ -217,7 +217,23 @@ base_pkgs="a/aaa_base \
 	ap/sqlite \
 	d/cmake \
 	d/perl \
-	d/python3"
+	d/python3 \
+	d/gcc \
+	d/gcc-g++ \
+	d/make \
+	d/binutils \
+	d/autoconf \
+	d/automake \
+	d/libtool \
+	d/pkg-config \
+	d/git \
+	l/libmpc \
+	l/gmp \
+	l/isl \
+	a/lzip \
+	a/infozip \
+	a/glibc \
+	d/kernel-headers"
 
 # ---- Logging helpers ----
 LOG_SEPARATOR() {
@@ -494,6 +510,22 @@ chroot . sh -c '/usr/sbin/slackpkg -batch=on -default_answer=y upgrade-all'
 
 LOG_STEP "slackpkg install-new"
 chroot . sh -c '/usr/sbin/slackpkg -batch=on -default_answer=y install-new' || true
+
+# ---- Install sbopkg ----
+LOG_STEP "Installing sbopkg"
+SBOPKG_VERSION="0.38.3"
+SBOPKG_URL="https://github.com/sbopkg/sbopkg/releases/download/${SBOPKG_VERSION}/sbopkg-${SBOPKG_VERSION}-noarch-1_wsr.tgz"
+SBOPKG_PKG="/tmp/sbopkg-${SBOPKG_VERSION}-noarch-1_wsr.tgz"
+
+if ! curl -fsSL -o "${SBOPKG_PKG}" "${SBOPKG_URL}"; then
+	echo "WARNING: Failed to download sbopkg from ${SBOPKG_URL}" >&2
+else
+	cp "${SBOPKG_PKG}" mnt/tmp/
+	chroot . /sbin/installpkg /tmp/sbopkg-${SBOPKG_VERSION}-noarch-1_wsr.tgz || \
+		echo "WARNING: sbopkg install failed" >&2
+	rm -f "${SBOPKG_PKG}" mnt/tmp/sbopkg-*.tgz
+	echo "sbopkg ${SBOPKG_VERSION} installed OK" >&2
+fi
 
 # Post-slackpkg dependency check
 LOG_STEP "Post-slackpkg dependency check"
