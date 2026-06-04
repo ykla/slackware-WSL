@@ -1,0 +1,61 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Slackware 版本'
+        required: true
+        default: 'current'
+        type: choice
+        options:
+          - '14.2'
+          - 'current'
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: 确定版本号和 tag
+        id: vars
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VER=$(echo "${{ github.ref_name }}" | sed 's/^v//')
+            TAG="${{ github.ref_name }}"
+          else
+            VER="${{ github.event.inputs.version }}"
+            TAG="auto-${VER}-${{ github.run_number }}"
+          fi
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: 构建镜像
+        run: sudo make VERSION=${{ steps.vars.outputs.version }}
+
+      - name: 获取产物文件名
+        id: artifact
+        run: |
+          ARCHIVE=$(ls *.tar.gz | head -1)
+          echo "name=${ARCHIVE}" >> "$GITHUB_OUTPUT"
+
+      - name: 创建 Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: '${{ steps.artifact.outputs.name }}'
+          tag_name: ${{ steps.vars.outputs.tag }}
+          name: Slackware ${{ steps.vars.outputs.version }} (Build #${{ github.run_number }})
+          generate_release_notes: true
+          body: |
+            Slackware ${{ steps.vars.outputs.version }} WSL 最小化文件系统镜像。
+
+            ### 使用方法
+            ```shell
+            lxrunoffline i -n Slackware${{ steps.vars.outputs.version }} -d D:\\WSL\\Slackware${{ steps.vars.outputs.version }} -f ${{ steps.artifact.outputs.name }}
+            ```
