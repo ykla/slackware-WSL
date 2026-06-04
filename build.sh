@@ -219,13 +219,27 @@ base_pkgs="a/aaa_base \
 	d/perl \
 	d/python3"
 
+# ---- Logging helpers ----
+LOG_SEPARATOR() {
+	echo "========================================================================" >&2
+}
+LOG_STEP() {
+	echo "" >&2
+	LOG_SEPARATOR
+	echo "  STEP: $1" >&2
+	LOG_SEPARATOR
+	echo "" >&2
+}
+
 # ---- Build ----
 mkdir -p "$ROOTFS" "$CACHEFS"
 
+LOG_STEP "Downloading initrd for ${ARCH} ${VERSION}"
 download_pkg "${INITRD_PATH}"
 
 cd "$ROOTFS"
 
+LOG_STEP "Extracting initrd"
 # extract the initrd to the current rootfs
 if file "${CACHEFS}/${INITRD_PATH}" | grep -wq XZ; then
 	xzcat "${CACHEFS}/${INITRD_PATH}" | cpio -idm --null --no-absolute-filenames
@@ -252,6 +266,7 @@ mount --bind /proc "${ROOTFS}/proc"
 mkdir -p mnt/etc
 cp etc/ld.so.conf mnt/etc
 
+LOG_STEP "Detecting install command"
 # determine install command and flags
 # We are doing fresh installs into /mnt, so installpkg is preferred.
 # upgradepkg does not support --root and is for upgrading existing packages.
@@ -270,6 +285,7 @@ fi
 echo "Using install command: ${install_cmd} ${install_args}" >&2
 
 # Fetch package paths from mirror
+LOG_STEP "Fetching package list from mirror"
 paths_file="${CACHEFS}/paths"
 if [[ ! -f "${paths_file}" ]]; then
 	fetch_package_paths > "${paths_file}"
@@ -282,6 +298,7 @@ if [[ "${paths_count}" -eq 0 ]]; then
 fi
 
 # Resolve package paths and download in parallel
+LOG_STEP "Resolving package paths and downloading"
 # Step 1: resolve all paths from FILE_LIST into a download manifest
 manifest_file="${CACHEFS}/manifest"
 if [[ ! -f "${manifest_file}" ]]; then
@@ -328,11 +345,21 @@ cat "${manifest_file}" | xargs -P 8 -I{} bash -c '
 	exit 1
 ' || true
 
+# Log download summary
+download_ok=$(find "${CACHEFS}/${PKG_SUBDIR}" -name '*.txz' 2>/dev/null | wc -l)
+echo "Download summary: ${download_ok} packages cached in ${CACHEFS}/${PKG_SUBDIR}" >&2
+
 # Step 3: install packages sequentially
+LOG_STEP "Installing ${base_pkgs_count} base packages"
+base_pkgs_count=$(echo "${base_pkgs}" | wc -w)
+install_ok=0
+install_fail=0
+install_skip=0
 for pkg in ${base_pkgs}; do
 	path=$(grep "^${pkg}.*\.t.z$" "${paths_file}" | head -1) || true
 	if [[ -z "${path}" ]]; then
 		echo "SKIP: ${pkg} not found in package list" >&2
+		install_skip=$((install_skip + 1))
 		continue
 	fi
 
@@ -347,6 +374,7 @@ for pkg in ${base_pkgs}; do
 			l_pkg="/cdrom/${latest#${CACHEFS}/}"
 		else
 			echo "SKIP: ${pkg} not downloaded, will be installed by slackpkg later" >&2
+			install_skip=$((install_skip + 1))
 			continue
 		fi
 	else
@@ -356,10 +384,31 @@ for pkg in ${base_pkgs}; do
 	echo "Installing ${pkg}..." >&2
 	if ! PATH=/bin:/sbin:/usr/bin:/usr/sbin chroot . ${install_cmd} --root /mnt ${install_args} "${l_pkg}"; then
 		echo "WARN: ${pkg} install failed, will be retried by slackpkg" >&2
+		install_fail=$((install_fail + 1))
+	else
+		install_ok=$((install_ok + 1))
 	fi
 done
 
+echo "" >&2
+echo "Base package install summary:" >&2
+echo "  OK:   ${install_ok}" >&2
+echo "  FAIL: ${install_fail}" >&2
+echo "  SKIP: ${install_skip}" >&2
+echo "  Total: $((install_ok + install_fail + install_skip)) / ${base_pkgs_count}" >&2
+
+# Check for missing shared libraries in the installed rootfs
+LOG_STEP "Checking for missing shared libraries"
+missing_libs=$(PATH=/bin:/sbin:/usr/bin:/usr/sbin chroot . ldd /mnt/usr/bin/* /mnt/usr/sbin/* /mnt/bin/* /mnt/sbin/* 2>/dev/null | grep 'not found' | sort -u || true)
+if [[ -n "${missing_libs}" ]]; then
+	echo "WARNING: The following shared libraries are missing:" >&2
+	echo "${missing_libs}" >&2
+else
+	echo "All shared libraries resolved OK" >&2
+fi
+
 # ---- System Configuration ----
+LOG_STEP "System configuration"
 cd mnt
 
 touch etc/resolv.conf
@@ -411,7 +460,16 @@ fi
 
 # Regenerate CA certificate bundle inside chroot
 # This creates /etc/ssl/certs/ca-certificates.crt which wget uses for verification
+LOG_STEP "Setting up CA certificates"
 chroot . /usr/sbin/update-ca-certificates --fresh 2>/dev/null || true
+
+# Verify CA bundle exists
+if [[ -f etc/ssl/certs/ca-certificates.crt ]]; then
+	cert_count=$(grep -c 'BEGIN CERTIFICATE' etc/ssl/certs/ca-certificates.crt 2>/dev/null || echo 0)
+	echo "CA bundle OK: ${cert_count} certificates in /etc/ssl/certs/ca-certificates.crt" >&2
+else
+	echo "WARNING: /etc/ssl/certs/ca-certificates.crt not found!" >&2
+fi
 
 # Ensure wget uses the system CA bundle
 if [[ -f etc/wgetrc ]]; then
@@ -425,17 +483,31 @@ fi
 mount --bind /etc/resolv.conf etc/resolv.conf
 
 # Import GPG key before update
-echo 'Importing GPG key ...'
+LOG_STEP "Importing GPG key for slackpkg"
 chroot . sh -c 'echo Y | /usr/sbin/slackpkg update gpg' || true
 
-echo 'slackpkg update ...'
+LOG_STEP "slackpkg update"
 chroot . sh -c '/usr/sbin/slackpkg -batch=on -default_answer=y update'
 
-echo 'slackpkg upgrade-all ...'
+LOG_STEP "slackpkg upgrade-all"
 chroot . sh -c '/usr/sbin/slackpkg -batch=on -default_answer=y upgrade-all'
 
-echo 'slackpkg install-new ...'
+LOG_STEP "slackpkg install-new"
 chroot . sh -c '/usr/sbin/slackpkg -batch=on -default_answer=y install-new' || true
+
+# Post-slackpkg dependency check
+LOG_STEP "Post-slackpkg dependency check"
+missing_libs2=$(PATH=/bin:/sbin:/usr/bin:/usr/sbin chroot . ldd /mnt/usr/bin/* /mnt/usr/sbin/* /mnt/bin/* /mnt/sbin/* 2>/dev/null | grep 'not found' | sort -u || true)
+if [[ -n "${missing_libs2}" ]]; then
+	echo "WARNING: The following shared libraries are still missing after slackpkg:" >&2
+	echo "${missing_libs2}" >&2
+else
+	echo "All shared libraries resolved OK after slackpkg" >&2
+fi
+
+# List all installed packages
+installed_count=$(ls /mnt/var/log/packages/ 2>/dev/null | wc -l)
+echo "Total installed packages: ${installed_count}" >&2
 
 # ---- Cleanup ----
 rm -rf var/lib/slackpkg/*
@@ -454,5 +526,13 @@ umount etc/resolv.conf
 echo "Packaging ${CWD}/${RELEASE}.tar.gz ..."
 tar --numeric-owner -czf "${CWD}/${RELEASE}.tar.gz" .
 ls -sh "${CWD}/${RELEASE}.tar.gz"
+
+LOG_STEP "Build complete"
+echo "Architecture: ${ARCH}" >&2
+echo "Version: ${VERSION}" >&2
+echo "Release: ${RELEASE}" >&2
+echo "Mirror: ${MIRROR_URL}" >&2
+echo "Installed packages: ${installed_count}" >&2
+echo "Output: ${CWD}/${RELEASE}.tar.gz" >&2
 
 echo "Done."
