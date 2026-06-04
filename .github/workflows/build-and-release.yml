@@ -71,5 +71,6 @@ jobs:
           tag_name: ${{ steps.tag.outputs.name }}
           name: Slackware WSL (Build #${{ github.run_number }})
           generate_release_notes: true
+          make_latest: true
           body: |
             Slackware 15.0 (x86_64 ) / current (x86_64 & aarch64) 基本系统，FreeBSD 兼容层用。
