@@ -35,55 +35,45 @@ trap cleanup EXIT
 
 # ---- Functions ----
 
-# Download a file from the mirror and return its cdrom path
-# If the exact file 404s, attempts to find the latest version from the directory listing
-cacheit() {
+# Download a single file, with fallback to directory listing for latest version
+# Outputs the resolved cdrom path to stdout on success
+download_pkg() {
 	local file="$1"
-	if [[ -f "${CACHEFS}/${file}" ]]; then
+	local cache_path="${CACHEFS}/${file}"
+
+	# Already cached
+	if [[ -f "${cache_path}" ]]; then
 		echo "/cdrom/${file}"
 		return 0
 	fi
 
-	mkdir -p "$(dirname "${CACHEFS}/${file}")"
-	echo "Fetching ${MIRROR}/${RELEASE}/${file}" >&2
-	if curl -fsSL -o "${CACHEFS}/${file}" "${MIRROR}/${RELEASE}/${file}" 2>/dev/null; then
+	mkdir -p "$(dirname "${cache_path}")"
+
+	# Try exact URL first
+	if curl -fsSL -o "${cache_path}" "${MIRROR}/${RELEASE}/${file}" 2>/dev/null; then
 		echo "/cdrom/${file}"
 		return 0
 	fi
+	rm -f "${cache_path}"
 
-	rm -f "${CACHEFS}/${file}"
-
-	# Exact file not found — try to resolve latest version from directory listing
-	# e.g. slackware64/a/bash-5.3.009-x86_64-2.txz -> slackware64/a/
+	# Fallback: scan directory listing for latest version
 	local dir_path
 	dir_path=$(dirname "${file}")
 	local pkg_prefix
-	# Extract package prefix: a/bash-5.3.009-x86_64-2.txz -> bash
 	pkg_prefix=$(basename "${file}" | sed 's/-[0-9].*//')
 
-	echo "WARN: ${file} not found, scanning ${dir_path}/ for ${pkg_prefix}..." >&2
 	local listing
-	listing=$(curl -fsSL "${MIRROR}/${RELEASE}/${dir_path}/" 2>/dev/null) || {
-		echo "ERROR: cannot list directory ${dir_path}/" >&2
-		return 1
-	}
+	listing=$(curl -fsSL "${MIRROR}/${RELEASE}/${dir_path}/" 2>/dev/null) || return 1
 
-	# Find the latest .txz matching the package prefix
 	local latest
 	latest=$(echo "${listing}" | grep -oP "${pkg_prefix}-[^\"]+\.txz" | sort -V | tail -1) || true
-	if [[ -z "${latest}" ]]; then
-		echo "ERROR: no ${pkg_prefix} package found in ${dir_path}/" >&2
-		return 1
-	fi
+	[[ -z "${latest}" ]] && return 1
 
-	echo "Found latest: ${dir_path}/${latest}" >&2
 	local alt_file="${dir_path}/${latest}"
 	if curl -fsSL -o "${CACHEFS}/${alt_file}" "${MIRROR}/${RELEASE}/${alt_file}" 2>/dev/null; then
 		echo "/cdrom/${alt_file}"
 		return 0
 	fi
-
-	echo "ERROR: failed to download ${alt_file}" >&2
 	rm -f "${CACHEFS}/${alt_file}"
 	return 1
 }
@@ -168,7 +158,7 @@ base_pkgs="a/aaa_base \
 # ---- Build ----
 mkdir -p "$ROOTFS" "$CACHEFS"
 
-cacheit "isolinux/initrd.img"
+download_pkg "isolinux/initrd.img"
 
 cd "$ROOTFS"
 
@@ -227,7 +217,54 @@ if [[ "${paths_count}" -eq 0 ]]; then
 	exit 1
 fi
 
-# Install base packages
+# Resolve package paths and download in parallel
+# Step 1: resolve all paths from FILE_LIST into a download manifest
+manifest_file="${CACHEFS}/manifest"
+if [[ ! -f "${manifest_file}" ]]; then
+	for pkg in ${base_pkgs}; do
+		path=$(grep "^${pkg}.*\.t.z$" "${paths_file}" | head -1) || true
+		if [[ -n "${path}" ]]; then
+			echo "${relbase}/${path}"
+		else
+			echo "SKIP: ${pkg} not found in package list" >&2
+		fi
+	done > "${manifest_file}"
+fi
+manifest_count=$(wc -l < "${manifest_file}")
+echo "Manifest: ${manifest_count} packages to download" >&2
+
+# Step 2: parallel download using xargs
+echo "Downloading ${manifest_count} packages in parallel..." >&2
+cat "${manifest_file}" | xargs -P 8 -I{} bash -c '
+	file="{}"
+	cache_path="'"${CACHEFS}"'/${file}"
+	if [[ -f "${cache_path}" ]]; then exit 0; fi
+	mkdir -p "$(dirname "${cache_path}")"
+	if curl -fsSL -o "${cache_path}" "'"${MIRROR}/${RELEASE}"'/${file}" 2>/dev/null; then
+		echo "  OK: ${file}" >&2
+		exit 0
+	fi
+	rm -f "${cache_path}"
+	# Fallback: scan directory for latest version
+	dir_path=$(dirname "${file}")
+	pkg_prefix=$(basename "${file}" | sed "s/-[0-9].*//")
+	listing=$(curl -fsSL "'"${MIRROR}/${RELEASE}"'/${dir_path}/" 2>/dev/null) || exit 1
+	latest=$(echo "${listing}" | grep -oP "${pkg_prefix}-[^\"]+\.txz" | sort -V | tail -1) || true
+	if [[ -z "${latest}" ]]; then
+		echo "  FAIL: ${file} not found" >&2
+		exit 1
+	fi
+	alt_file="${dir_path}/${latest}"
+	if curl -fsSL -o "'"${CACHEFS}"'/${alt_file}" "'"${MIRROR}/${RELEASE}"'/${alt_file}" 2>/dev/null; then
+		echo "  OK (fallback): ${alt_file}" >&2
+		exit 0
+	fi
+	echo "  FAIL: ${alt_file}" >&2
+	rm -f "'"${CACHEFS}"'/${alt_file}"
+	exit 1
+' || true
+
+# Step 3: install packages sequentially
 for pkg in ${base_pkgs}; do
 	path=$(grep "^${pkg}.*\.t.z$" "${paths_file}" | head -1) || true
 	if [[ -z "${path}" ]]; then
@@ -235,10 +272,23 @@ for pkg in ${base_pkgs}; do
 		continue
 	fi
 
-	l_pkg=$(cacheit "${relbase}/${path}") || {
-		echo "SKIP: ${pkg} download failed, will be installed by slackpkg later" >&2
-		continue
-	}
+	# Check if file was downloaded (exact or fallback)
+	cached_path="${CACHEFS}/${relbase}/${path}"
+	if [[ ! -f "${cached_path}" ]]; then
+		# Check for fallback version
+		dir_path=$(dirname "${relbase}/${path}")
+		pkg_prefix=$(basename "${path}" | sed 's/-[0-9].*//')
+		latest=$(ls "${CACHEFS}/${dir_path}/${pkg_prefix}"-*.txz 2>/dev/null | sort -V | tail -1) || true
+		if [[ -n "${latest}" ]]; then
+			l_pkg="/cdrom/${latest#${CACHEFS}/}"
+		else
+			echo "SKIP: ${pkg} not downloaded, will be installed by slackpkg later" >&2
+			continue
+		fi
+	else
+		l_pkg="/cdrom/${relbase}/${path}"
+	fi
+
 	echo "Installing ${pkg}..." >&2
 	if ! PATH=/bin:/sbin:/usr/bin:/usr/sbin chroot . ${install_cmd} --root /mnt ${install_args} "${l_pkg}"; then
 		echo "WARN: ${pkg} install failed, will be retried by slackpkg" >&2
