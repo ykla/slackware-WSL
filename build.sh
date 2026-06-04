@@ -156,15 +156,22 @@ mount --bind /proc "${ROOTFS}/proc"
 mkdir -p mnt/etc
 cp etc/ld.so.conf mnt/etc
 
-# determine install flags based on available pkgtools version
+# determine install command and flags
+# We are doing fresh installs into /mnt, so installpkg is preferred.
+# upgradepkg does not support --root and is for upgrading existing packages.
+install_cmd=""
 install_args=""
-if [[ -f ./sbin/upgradepkg ]] && grep -qw terse ./sbin/upgradepkg; then
-	install_args="--install-new --reinstall --terse"
-elif [[ -f ./sbin/installpkg ]] && grep -qw terse ./sbin/installpkg; then
-	install_args="--terse"
-elif [[ -f ./usr/lib/setup/installpkg ]] && grep -qw terse ./usr/lib/setup/installpkg; then
-	install_args="--terse"
+if [[ -f ./sbin/installpkg ]]; then
+	install_cmd="./sbin/installpkg"
+	grep -qw terse ./sbin/installpkg && install_args="--terse"
+elif [[ -f ./usr/lib/setup/installpkg ]]; then
+	install_cmd="./usr/lib/setup/installpkg"
+	grep -qw terse ./usr/lib/setup/installpkg && install_args="--terse"
+elif [[ -f ./sbin/upgradepkg ]]; then
+	install_cmd="./sbin/upgradepkg"
+	grep -qw terse ./sbin/upgradepkg && install_args="--terse"
 fi
+echo "Using install command: ${install_cmd} ${install_args}" >&2
 
 # Fetch package paths from mirror
 paths_file="${CACHEFS}/paths"
@@ -188,13 +195,7 @@ for pkg in ${base_pkgs}; do
 
 	l_pkg=$(cacheit "${relbase}/${path}")
 	echo "Installing ${pkg}..." >&2
-	if [[ -e ./sbin/upgradepkg ]]; then
-		PATH=/bin:/sbin:/usr/bin:/usr/sbin chroot . /sbin/upgradepkg --root /mnt ${install_args} "${l_pkg}"
-	elif [[ -e ./sbin/installpkg ]]; then
-		PATH=/bin:/sbin:/usr/bin:/usr/sbin chroot . /sbin/installpkg --root /mnt ${install_args} "${l_pkg}"
-	else
-		PATH=/bin:/sbin:/usr/bin:/usr/sbin chroot . /usr/lib/setup/installpkg --root /mnt ${install_args} "${l_pkg}"
-	fi
+	PATH=/bin:/sbin:/usr/bin:/usr/sbin chroot . ${install_cmd} --root /mnt ${install_args} "${l_pkg}"
 done
 
 # ---- System Configuration ----
