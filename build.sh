@@ -66,7 +66,7 @@ fetch_package_paths() {
 		return 1
 	fi
 	local count
-	count=$(grep -c '\.t\.z$' "${tmp_file}") || count=0
+	count=$(grep -c '\.t.z$' "${tmp_file}") || count=0
 	echo "Found ${count} packages in FILE_LIST" >&2
 	if [[ "${count}" -eq 0 ]]; then
 		echo "ERROR: no packages found in FILE_LIST" >&2
@@ -74,7 +74,7 @@ fetch_package_paths() {
 		rm -f "${tmp_file}"
 		return 1
 	fi
-	grep '\.t\.z$' "${tmp_file}" | awk '{ print $8 }' | sed 's|^\./||' || true
+	grep '\.t.z$' "${tmp_file}" | awk '{ print $8 }' | sed 's|^\./||' || true
 	rm -f "${tmp_file}"
 }
 
