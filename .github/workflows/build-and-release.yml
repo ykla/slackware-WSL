@@ -40,17 +40,17 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         with:
           name: slackware-64-15.0
           path: artifacts
 
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         with:
           name: slackware-64-current
           path: artifacts
 
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         with:
           name: slackware-aarch64-current
           path: artifacts
