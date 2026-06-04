@@ -309,10 +309,27 @@ sed -i \
 	-e 's/SPINNING=on/SPINNING=off/' \
 	etc/slackpkg/slackpkg.conf
 
+# Copy host CA certificates so wget can verify HTTPS in chroot
+if [[ -d /etc/ssl/certs ]]; then
+	mkdir -p etc/ssl/certs
+	cp -a /etc/ssl/certs/* etc/ssl/certs/ 2>/dev/null || true
+	if [[ -f /etc/ssl/cert.pem ]]; then
+		cp -a /etc/ssl/cert.pem etc/ssl/cert.pem
+	fi
+fi
+if [[ -d /etc/pki/tls ]]; then
+	mkdir -p etc/pki/tls
+	cp -a /etc/pki/tls/* etc/pki/tls/ 2>/dev/null || true
+fi
+
 mount --bind /etc/resolv.conf etc/resolv.conf
 
+# Import GPG key before update
+echo 'Importing GPG key ...'
+chroot . sh -c 'echo Y | /usr/sbin/slackpkg update gpg' || true
+
 echo 'slackpkg update ...'
-chroot . sh -c 'yes y | /usr/sbin/slackpkg -batch=on -default_answer=y update'
+chroot . sh -c '/usr/sbin/slackpkg -batch=on -default_answer=y update'
 
 echo 'slackpkg upgrade-all ...'
 chroot . sh -c '/usr/sbin/slackpkg -batch=on -default_answer=y upgrade-all'
