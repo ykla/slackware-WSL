@@ -204,15 +204,12 @@ base_pkgs="a/aaa_base \
 	a/acl \
 	l/expat \
 	l/gdbm \
-	l/jsoncpp \
 	l/libarchive \
 	l/libcap \
 	l/libffi \
 	n/libmnl \
 	l/libuv \
 	l/lzo \
-	l/mpdecimal \
-	l/rhash \
 	l/db48 \
 	n/pinentry \
 	ap/sqlite \
