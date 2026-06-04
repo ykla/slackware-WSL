@@ -218,6 +218,7 @@ base_pkgs="a/aaa_base \
 	d/perl \
 	d/python3 \
 	d/gcc \
+	l/gc \
 	d/gcc-g++ \
 	d/make \
 	d/binutils \
@@ -226,9 +227,13 @@ base_pkgs="a/aaa_base \
 	d/libtool \
 	d/pkg-config \
 	d/git \
+	l/libxml2 \
+	n/cyrus-sasl \
 	l/libmpc \
 	l/gmp \
 	l/isl \
+	d/guile \
+	
 	a/lzip \
 	a/infozip \
 	a/glibc \
