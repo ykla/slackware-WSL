@@ -11,17 +11,29 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        version: ['15.0', 'current']
+        include:
+          - version: '15.0'
+            arch: '64'
+          - version: 'current'
+            arch: '64'
+          - version: 'current'
+            arch: 'aarch64'
     steps:
       - uses: actions/checkout@v6
 
-      - name: 构建镜像 (${{ matrix.version }})
-        run: sudo VERSION=${{ matrix.version }} bash build.sh
+      - name: Set up QEMU for aarch64
+        if: matrix.arch == 'aarch64'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/arm64
 
-      - name: 上传产物 (${{ matrix.version }})
+      - name: 构建镜像 (${{ matrix.arch }} ${{ matrix.version }})
+        run: sudo VERSION=${{ matrix.version }} ARCH=${{ matrix.arch }} bash build.sh
+
+      - name: 上传产物 (${{ matrix.arch }}-${{ matrix.version }})
         uses: actions/upload-artifact@v6
         with:
-          name: slackware-${{ matrix.version }}
+          name: slackware-${{ matrix.arch }}-${{ matrix.version }}
           path: '*.tar.gz'
           retention-days: 1
 
@@ -33,12 +45,17 @@ jobs:
     steps:
       - uses: actions/download-artifact@v5
         with:
-          name: slackware-15.0
+          name: slackware-64-15.0
           path: artifacts
 
       - uses: actions/download-artifact@v5
         with:
-          name: slackware-current
+          name: slackware-64-current
+          path: artifacts
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: slackware-aarch64-current
           path: artifacts
 
       - name: 确定 tag 名
@@ -58,10 +75,15 @@ jobs:
           name: Slackware WSL (Build #${{ github.run_number }})
           generate_release_notes: true
           body: |
-            Slackware 15.0 / current WSL 最小化文件系统镜像。
+            Slackware 15.0 / current (x86_64) + current (aarch64) WSL 最小化文件系统镜像。
 
             ### 使用方法
-            以 15.0 为例：
+            以 15.0 x86_64 为例：
             ```shell
             lxrunoffline i -n Slackware -d D:\\WSL\\Slackware -f slackware64-15.0.tar.gz
+            ```
+
+            以 current aarch64 为例：
+            ```shell
+            lxrunoffline i -n Slackware -d D:\\WSL\\Slackware -f slackwareaarch64-current.tar.gz
             ```

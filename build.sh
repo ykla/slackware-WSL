@@ -1,23 +1,46 @@
 #!/bin/bash
 set -euo pipefail
+# Ignore SIGPIPE to avoid "Broken pipe" errors when grep pipes to head/tail
+trap '' PIPE
 # Generate a very minimal filesystem from slackware
 
 # ---- Architecture detection ----
 if [[ -z "${ARCH:-}" ]]; then
 	case "$(uname -m)" in
 		i?86) ARCH="" ;;
+		aarch64) ARCH=aarch64 ;;
 		arm*) ARCH=arm ;;
 		   *) ARCH=64 ;;
 	esac
 fi
+
+# ---- Architecture-specific configuration ----
+case "${ARCH}" in
+	aarch64)
+		INITRD_PATH="installer/initrd-armv8.img"
+		PKG_SUBDIR="slackware"
+		MIRROR_SUBDIR="slackwarearm"
+		DEFAULT_MIRROR="https://mirrors.aptalaska.net/slackware"
+		;;
+	*)
+		INITRD_PATH="isolinux/initrd.img"
+		PKG_SUBDIR="slackware${ARCH}"
+		MIRROR_SUBDIR=""
+		DEFAULT_MIRROR="https://mirror.nju.edu.cn/slackware"
+		;;
+esac
 
 # ---- Configuration ----
 BUILD_NAME=${BUILD_NAME:-"slackware"}
 VERSION=${VERSION:="current"}
 RELEASENAME=${RELEASENAME:-"slackware${ARCH}"}
 RELEASE=${RELEASE:-"${RELEASENAME}-${VERSION}"}
-relbase="${RELEASE%%-*}"
-MIRROR=${MIRROR:-"https://mirror.nju.edu.cn/slackware"}
+MIRROR=${MIRROR:-"${DEFAULT_MIRROR}"}
+if [[ -n "${MIRROR_SUBDIR}" ]]; then
+	MIRROR_URL="${MIRROR}/${MIRROR_SUBDIR}"
+else
+	MIRROR_URL="${MIRROR}"
+fi
 CACHEFS=${CACHEFS:-"/tmp/${BUILD_NAME}/${RELEASE}"}
 ROOTFS=${ROOTFS:-"/tmp/rootfs-${RELEASE}"}
 CWD="$(pwd)"
@@ -50,7 +73,7 @@ download_pkg() {
 	mkdir -p "$(dirname "${cache_path}")"
 
 	# Try exact URL first
-	if curl -fsSL -o "${cache_path}" "${MIRROR}/${RELEASE}/${file}" 2>/dev/null; then
+	if curl -fsSL -o "${cache_path}" "${MIRROR_URL}/${RELEASE}/${file}" 2>/dev/null; then
 		echo "/cdrom/${file}"
 		return 0
 	fi
@@ -63,14 +86,14 @@ download_pkg() {
 	pkg_prefix=$(basename "${file}" | sed 's/-[0-9].*//')
 
 	local listing
-	listing=$(curl -fsSL "${MIRROR}/${RELEASE}/${dir_path}/" 2>/dev/null) || return 1
+	listing=$(curl -fsSL "${MIRROR_URL}/${RELEASE}/${dir_path}/" 2>/dev/null) || return 1
 
 	local latest
 	latest=$(echo "${listing}" | grep -oP "${pkg_prefix}-[^\"]+\.txz" | sort -V | tail -1) || true
 	[[ -z "${latest}" ]] && return 1
 
 	local alt_file="${dir_path}/${latest}"
-	if curl -fsSL -o "${CACHEFS}/${alt_file}" "${MIRROR}/${RELEASE}/${alt_file}" 2>/dev/null; then
+	if curl -fsSL -o "${CACHEFS}/${alt_file}" "${MIRROR_URL}/${RELEASE}/${alt_file}" 2>/dev/null; then
 		echo "/cdrom/${alt_file}"
 		return 0
 	fi
@@ -82,7 +105,7 @@ download_pkg() {
 fetch_package_paths() {
 	local tmp_file
 	tmp_file="$(mktemp)"
-	local url="${MIRROR}/${RELEASE}/${relbase}/FILE_LIST"
+	local url="${MIRROR_URL}/${RELEASE}/${PKG_SUBDIR}/FILE_LIST"
 	echo "Fetching package list from ${url}" >&2
 	if ! curl -fsSL "${url}" > "${tmp_file}"; then
 		echo "ERROR: failed to fetch FILE_LIST from ${url}" >&2
@@ -165,15 +188,15 @@ base_pkgs="a/aaa_base \
 # ---- Build ----
 mkdir -p "$ROOTFS" "$CACHEFS"
 
-download_pkg "isolinux/initrd.img"
+download_pkg "${INITRD_PATH}"
 
 cd "$ROOTFS"
 
 # extract the initrd to the current rootfs
-if file "${CACHEFS}/isolinux/initrd.img" | grep -wq XZ; then
-	xzcat "${CACHEFS}/isolinux/initrd.img" | cpio -idm --null --no-absolute-filenames
+if file "${CACHEFS}/${INITRD_PATH}" | grep -wq XZ; then
+	xzcat "${CACHEFS}/${INITRD_PATH}" | cpio -idm --null --no-absolute-filenames
 else
-	zcat "${CACHEFS}/isolinux/initrd.img" | cpio -idm --null --no-absolute-filenames
+	zcat "${CACHEFS}/${INITRD_PATH}" | cpio -idm --null --no-absolute-filenames
 fi
 
 if stat -c %F "$ROOTFS/cdrom" | grep -q "symbolic link"; then
@@ -231,7 +254,7 @@ if [[ ! -f "${manifest_file}" ]]; then
 	for pkg in ${base_pkgs}; do
 		path=$(grep "^${pkg}.*\.t.z$" "${paths_file}" | head -1) || true
 		if [[ -n "${path}" ]]; then
-			echo "${relbase}/${path}"
+			echo "${PKG_SUBDIR}/${path}"
 		else
 			echo "SKIP: ${pkg} not found in package list" >&2
 		fi
@@ -247,7 +270,7 @@ cat "${manifest_file}" | xargs -P 8 -I{} bash -c '
 	cache_path="'"${CACHEFS}"'/${file}"
 	if [[ -f "${cache_path}" ]]; then exit 0; fi
 	mkdir -p "$(dirname "${cache_path}")"
-	if curl -fsSL -o "${cache_path}" "'"${MIRROR}/${RELEASE}"'/${file}" 2>/dev/null; then
+	if curl -fsSL -o "${cache_path}" "'"${MIRROR_URL}/${RELEASE}"'/${file}" 2>/dev/null; then
 		echo "  OK: ${file}" >&2
 		exit 0
 	fi
@@ -255,14 +278,14 @@ cat "${manifest_file}" | xargs -P 8 -I{} bash -c '
 	# Fallback: scan directory for latest version
 	dir_path=$(dirname "${file}")
 	pkg_prefix=$(basename "${file}" | sed "s/-[0-9].*//")
-	listing=$(curl -fsSL "'"${MIRROR}/${RELEASE}"'/${dir_path}/" 2>/dev/null) || exit 1
+	listing=$(curl -fsSL "'"${MIRROR_URL}/${RELEASE}"'/${dir_path}/" 2>/dev/null) || exit 1
 	latest=$(echo "${listing}" | grep -oP "${pkg_prefix}-[^\"]+\.txz" | sort -V | tail -1) || true
 	if [[ -z "${latest}" ]]; then
 		echo "  FAIL: ${file} not found" >&2
 		exit 1
 	fi
 	alt_file="${dir_path}/${latest}"
-	if curl -fsSL -o "'"${CACHEFS}"'/${alt_file}" "'"${MIRROR}/${RELEASE}"'/${alt_file}" 2>/dev/null; then
+	if curl -fsSL -o "'"${CACHEFS}"'/${alt_file}" "'"${MIRROR_URL}/${RELEASE}"'/${alt_file}" 2>/dev/null; then
 		echo "  OK (fallback): ${alt_file}" >&2
 		exit 0
 	fi
@@ -280,10 +303,10 @@ for pkg in ${base_pkgs}; do
 	fi
 
 	# Check if file was downloaded (exact or fallback)
-	cached_path="${CACHEFS}/${relbase}/${path}"
+	cached_path="${CACHEFS}/${PKG_SUBDIR}/${path}"
 	if [[ ! -f "${cached_path}" ]]; then
 		# Check for fallback version
-		dir_path=$(dirname "${relbase}/${path}")
+		dir_path=$(dirname "${PKG_SUBDIR}/${path}")
 		pkg_prefix=$(basename "${path}" | sed 's/-[0-9].*//')
 		latest=$(ls "${CACHEFS}/${dir_path}/${pkg_prefix}"-*.txz 2>/dev/null | sort -V | tail -1) || true
 		if [[ -n "${latest}" ]]; then
@@ -293,7 +316,7 @@ for pkg in ${base_pkgs}; do
 			continue
 		fi
 	else
-		l_pkg="/cdrom/${relbase}/${path}"
+		l_pkg="/cdrom/${PKG_SUBDIR}/${path}"
 	fi
 
 	echo "Installing ${pkg}..." >&2
@@ -332,7 +355,7 @@ if [[ -f usr/share/zoneinfo/Asia/Shanghai ]]; then
 	echo 'Asia/Shanghai' > etc/timezone
 fi
 
-echo "${MIRROR}/${RELEASE}/" >> etc/slackpkg/mirrors
+echo "${MIRROR_URL}/${RELEASE}/" >> etc/slackpkg/mirrors
 sed -i \
 	-e 's/DIALOG=on/DIALOG=off/' \
 	-e 's/POSTINST=on/POSTINST=off/' \
