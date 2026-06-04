@@ -26,7 +26,7 @@ case "${ARCH}" in
 		INITRD_PATH="isolinux/initrd.img"
 		PKG_SUBDIR="slackware${ARCH}"
 		MIRROR_SUBDIR=""
-		DEFAULT_MIRROR="https://mirror.nju.edu.cn/slackware"
+		DEFAULT_MIRROR="https://mirrors.slackware.com/slackware"
 		;;
 esac
 
