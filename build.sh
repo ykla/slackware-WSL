@@ -485,6 +485,7 @@ mkdir -p etc/ssl/certs
 chroot . sh -c '
 	if command -v update-ca-certificates >/dev/null 2>&1; then
 		update-ca-certificates --fresh
+		slackpkg update gpg
 	fi
 ' || true
 
