@@ -17,7 +17,7 @@ VERSION=${VERSION:="current"}
 RELEASENAME=${RELEASENAME:-"slackware${ARCH}"}
 RELEASE=${RELEASE:-"${RELEASENAME}-${VERSION}"}
 relbase="${RELEASE%%-*}"
-MIRROR=${MIRROR:-"https://mirrors.ustc.edu.cn/slackware"}
+MIRROR=${MIRROR:-"https://mirror.nju.edu.cn/slackware"}
 CACHEFS=${CACHEFS:-"/tmp/${BUILD_NAME}/${RELEASE}"}
 ROOTFS=${ROOTFS:-"/tmp/rootfs-${RELEASE}"}
 CWD="$(pwd)"
