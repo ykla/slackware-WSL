@@ -1,6 +1,6 @@
-LATEST		:= 14.2
+LATEST		:= 15.0
 VERSION		:= $(LATEST)
-VERSIONS	:= 14.2 current
+VERSIONS	:= 15.0 current
 NAME		:= slackware
 MIRROR		:= http://mirrors.ustc.edu.cn/slackware
 ifeq ($(shell uname -m),x86_64)

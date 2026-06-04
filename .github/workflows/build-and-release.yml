@@ -12,6 +12,7 @@ on:
         default: 'current'
         type: choice
         options:
+          - '15.0'
           - '14.2'
           - 'current'
 

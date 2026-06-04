@@ -20,9 +20,9 @@ ROOTFS=${ROOTFS:-"/tmp/rootfs-${RELEASE}"}
 CWD=$(pwd)
 
 base_pkgs="a/aaa_base \
-	a/aaa_elflibs \
+	a/aaa_libraries \
 	a/coreutils \
-	a/glibc-solibs \
+	a/aaa_glibc-solibs \
 	a/aaa_terminfo \
 	a/pkgtools \
 	a/shadow \
@@ -50,7 +50,6 @@ base_pkgs="a/aaa_base \
 	a/libcgroup \
 	a/patch \
 	a/sysfsutils \
-	a/time \
 	a/tree \
 	a/utempter \
 	a/which \
