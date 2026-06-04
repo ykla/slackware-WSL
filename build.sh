@@ -499,21 +499,9 @@ fi
 
 mount --bind /etc/resolv.conf etc/resolv.conf
 
-# Import GPG key before update
-LOG_STEP "Importing GPG key for slackpkg"
-chroot . sh -c 'echo Y | /usr/sbin/slackpkg update gpg' || true
-
-LOG_STEP "slackpkg update"
-chroot . sh -c '/usr/sbin/slackpkg -batch=on -default_answer=y update'
-
-LOG_STEP "slackpkg upgrade-all"
-chroot . sh -c '/usr/sbin/slackpkg -batch=on -default_answer=y upgrade-all'
-
-LOG_STEP "slackpkg install-new"
-chroot . sh -c '/usr/sbin/slackpkg -batch=on -default_answer=y install-new' || true
-
 # ---- Install sbopkg ----
 LOG_STEP "Installing sbopkg"
+
 SBOPKG_VERSION="0.38.3"
 SBOPKG_URL="https://github.com/sbopkg/sbopkg/releases/download/${SBOPKG_VERSION}/sbopkg-${SBOPKG_VERSION}-noarch-1_wsr.tgz"
 SBOPKG_PKG="/tmp/sbopkg-${SBOPKG_VERSION}-noarch-1_wsr.tgz"
@@ -521,11 +509,29 @@ SBOPKG_PKG="/tmp/sbopkg-${SBOPKG_VERSION}-noarch-1_wsr.tgz"
 if ! curl -fsSL -o "${SBOPKG_PKG}" "${SBOPKG_URL}"; then
 	echo "WARNING: Failed to download sbopkg from ${SBOPKG_URL}" >&2
 else
-	cp "${SBOPKG_PKG}" mnt/tmp/
-	chroot . /sbin/installpkg /tmp/sbopkg-${SBOPKG_VERSION}-noarch-1_wsr.tgz || \
+	cp "${SBOPKG_PKG}" tmp/
+
+	echo "Checking package location..." >&2
+	ls -l tmp/sbopkg-${SBOPKG_VERSION}-noarch-1_wsr.tgz >&2
+
+	if chroot . test -f \
+		"/tmp/sbopkg-${SBOPKG_VERSION}-noarch-1_wsr.tgz"
+	then
+		echo "Package visible inside chroot" >&2
+	else
+		echo "WARNING: Package not visible inside chroot" >&2
+	fi
+
+	if chroot . /sbin/installpkg \
+		"/tmp/sbopkg-${SBOPKG_VERSION}-noarch-1_wsr.tgz"
+	then
+		echo "sbopkg ${SBOPKG_VERSION} installed OK" >&2
+	else
 		echo "WARNING: sbopkg install failed" >&2
-	rm -f "${SBOPKG_PKG}" mnt/tmp/sbopkg-*.tgz
-	echo "sbopkg ${SBOPKG_VERSION} installed OK" >&2
+	fi
+
+	rm -f "${SBOPKG_PKG}"
+	rm -f tmp/sbopkg-*.tgz
 fi
 
 # Post-slackpkg dependency check
