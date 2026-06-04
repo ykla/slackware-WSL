@@ -56,7 +56,7 @@ main() {
     local tmp_file_list
     local ret
 
-    mirror="${MIRROR:-http://mirrors.ustc.edu.cn/slackware}"
+    mirror="${MIRROR:-https://mirrors.slackware.com/slackware}"
     release="${RELEASE:-slackware64-15.0}"
 
     while getopts ":hm:r:t" opts ; do
