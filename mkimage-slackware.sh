@@ -1,9 +1,10 @@
 #!/bin/bash
+set -euo pipefail
 # Generate a very minimal filesystem from slackware
 
 # ---- Architecture detection ----
-if [ -z "$ARCH" ]; then
-	case "$( uname -m )" in
+if [[ -z "${ARCH:-}" ]]; then
+	case "$(uname -m)" in
 		i?86) ARCH="" ;;
 		arm*) ARCH=arm ;;
 		   *) ARCH=64 ;;
@@ -19,17 +20,28 @@ relbase="${RELEASE%%-*}"
 MIRROR=${MIRROR:-"https://mirrors.slackware.com/slackware"}
 CACHEFS=${CACHEFS:-"/tmp/${BUILD_NAME}/${RELEASE}"}
 ROOTFS=${ROOTFS:-"/tmp/rootfs-${RELEASE}"}
-CWD=$(pwd)
+CWD="$(pwd)"
+
+# ---- Cleanup trap ----
+cleanup() {
+	local dir
+	echo "Cleaning up mounts..." >&2
+	for dir in cdrom dev sys proc; do
+		mountpoint -q "${ROOTFS}/${dir}" 2>/dev/null && umount "${ROOTFS}/${dir}" 2>/dev/null || true
+	done
+	mountpoint -q "${ROOTFS}/mnt/etc/resolv.conf" 2>/dev/null && umount "${ROOTFS}/mnt/etc/resolv.conf" 2>/dev/null || true
+}
+trap cleanup EXIT
 
 # ---- Functions ----
 
 # Download a file from the mirror and return its cdrom path
 cacheit() {
 	local file="$1"
-	if [ ! -f "${CACHEFS}/${file}" ]; then
-		mkdir -vp "$(dirname "${CACHEFS}/${file}")"
+	if [[ ! -f "${CACHEFS}/${file}" ]]; then
+		mkdir -p "$(dirname "${CACHEFS}/${file}")"
 		echo "Fetching ${MIRROR}/${RELEASE}/${file}" >&2
-		curl -s -o "${CACHEFS}/${file}" "${MIRROR}/${RELEASE}/${file}"
+		curl -fsSL -o "${CACHEFS}/${file}" "${MIRROR}/${RELEASE}/${file}"
 	fi
 	echo "/cdrom/${file}"
 }
@@ -38,10 +50,12 @@ cacheit() {
 fetch_package_paths() {
 	local tmp_file
 	tmp_file="$(mktemp)"
-	if ! curl -sSL "${MIRROR}/${RELEASE}/${relbase}/FILE_LIST" > "${tmp_file}"; then
-		echo "ERROR: failed to fetch FILE_LIST from ${MIRROR}/${RELEASE}/${relbase}/" >&2
+	local url="${MIRROR}/${RELEASE}/${relbase}/FILE_LIST"
+	echo "Fetching package list from ${url}" >&2
+	if ! curl -fsSL "${url}" > "${tmp_file}"; then
+		echo "ERROR: failed to fetch FILE_LIST" >&2
 		rm -f "${tmp_file}"
-		exit 1
+		return 1
 	fi
 	grep '\.t\.z$' "${tmp_file}" | awk '{ print $8 }' | sed 's|^\./||'
 	rm -f "${tmp_file}"
@@ -93,11 +107,12 @@ base_pkgs="a/aaa_base \
 	n/openssl"
 
 # ---- Build ----
-mkdir -vp "$ROOTFS" "$CACHEFS"
+mkdir -p "$ROOTFS" "$CACHEFS"
 
 cacheit "isolinux/initrd.img"
 
 cd "$ROOTFS"
+
 # extract the initrd to the current rootfs
 if file "${CACHEFS}/isolinux/initrd.img" | grep -wq XZ; then
 	xzcat "${CACHEFS}/isolinux/initrd.img" | cpio -idm --null --no-absolute-filenames
@@ -106,52 +121,53 @@ else
 fi
 
 if stat -c %F "$ROOTFS/cdrom" | grep -q "symbolic link"; then
-	rm -v "$ROOTFS/cdrom"
+	rm -f "$ROOTFS/cdrom"
 fi
-mkdir -vp "$ROOTFS"/{mnt,cdrom,dev,proc,sys}
+mkdir -p mnt cdrom dev proc sys
 
 for dir in cdrom dev sys proc; do
-	if mount | grep -q "$ROOTFS/$dir"; then
-		umount -vf "$ROOTFS/$dir"
+	if mountpoint -q "$ROOTFS/$dir" 2>/dev/null; then
+		umount "$ROOTFS/$dir"
 	fi
 done
 
-mount -v --bind "$CACHEFS" "${ROOTFS}/cdrom"
-mount -v -t devtmpfs none "${ROOTFS}/dev"
-mount -v --bind -o ro /sys "${ROOTFS}/sys"
-mount -v --bind /proc "${ROOTFS}/proc"
+mount --bind "$CACHEFS" "${ROOTFS}/cdrom"
+mount -t devtmpfs none "${ROOTFS}/dev"
+mount --bind -o ro /sys "${ROOTFS}/sys"
+mount --bind /proc "${ROOTFS}/proc"
 
-mkdir -vp mnt/etc
-cp -v etc/ld.so.conf mnt/etc
+mkdir -p mnt/etc
+cp etc/ld.so.conf mnt/etc
 
-# older versions than 13.37 did not have certain flags
+# determine install flags based on available pkgtools version
 install_args=""
-if [ -f ./sbin/upgradepkg ] && grep -qw terse ./sbin/upgradepkg; then
+if [[ -f ./sbin/upgradepkg ]] && grep -qw terse ./sbin/upgradepkg; then
 	install_args="--install-new --reinstall --terse"
-elif [ -f ./sbin/installpkg ] && grep -qw terse ./sbin/installpkg; then
+elif [[ -f ./sbin/installpkg ]] && grep -qw terse ./sbin/installpkg; then
 	install_args="--terse"
-elif [ -f ./usr/lib/setup/installpkg ] && grep -qw terse ./usr/lib/setup/installpkg; then
+elif [[ -f ./usr/lib/setup/installpkg ]] && grep -qw terse ./usr/lib/setup/installpkg; then
 	install_args="--terse"
 fi
 
 # Fetch package paths from mirror
 paths_file="${CACHEFS}/paths"
-if [ ! -f "${paths_file}" ]; then
+if [[ ! -f "${paths_file}" ]]; then
 	fetch_package_paths > "${paths_file}"
 fi
 
 # Install base packages
 for pkg in ${base_pkgs}; do
-	path=$(grep "^${pkg}" "${paths_file}" | head -1)
-	if [ -z "${path}" ]; then
-		echo "${pkg} not found"
+	path=$(grep "^${pkg}" "${paths_file}" | head -1) || true
+	if [[ -z "${path}" ]]; then
+		echo "SKIP: ${pkg} not found in package list" >&2
 		continue
 	fi
 
 	l_pkg=$(cacheit "${relbase}/${path}")
-	if [ -e ./sbin/upgradepkg ]; then
+	echo "Installing ${pkg}..." >&2
+	if [[ -e ./sbin/upgradepkg ]]; then
 		PATH=/bin:/sbin:/usr/bin:/usr/sbin chroot . /sbin/upgradepkg --root /mnt ${install_args} "${l_pkg}"
-	elif [ -e ./sbin/installpkg ]; then
+	elif [[ -e ./sbin/installpkg ]]; then
 		PATH=/bin:/sbin:/usr/bin:/usr/sbin chroot . /sbin/installpkg --root /mnt ${install_args} "${l_pkg}"
 	else
 		PATH=/bin:/sbin:/usr/bin:/usr/sbin chroot . /usr/lib/setup/installpkg --root /mnt ${install_args} "${l_pkg}"
@@ -160,37 +176,42 @@ done
 
 # ---- System Configuration ----
 cd mnt
-set -x
+
 touch etc/resolv.conf
-echo "export TERM=linux" >> etc/profile.d/term.sh
+echo 'export TERM=linux' >> etc/profile.d/term.sh
 chmod +x etc/profile.d/term.sh
-echo ". /etc/profile" > .bashrc
+echo '. /etc/profile' > .bashrc
 echo "${MIRROR}/${RELEASE}/" >> etc/slackpkg/mirrors
-sed -i 's/DIALOG=on/DIALOG=off/' etc/slackpkg/slackpkg.conf
-sed -i 's/POSTINST=on/POSTINST=off/' etc/slackpkg/slackpkg.conf
-sed -i 's/SPINNING=on/SPINNING=off/' etc/slackpkg/slackpkg.conf
+sed -i \
+	-e 's/DIALOG=on/DIALOG=off/' \
+	-e 's/POSTINST=on/POSTINST=off/' \
+	-e 's/SPINNING=on/SPINNING=off/' \
+	etc/slackpkg/slackpkg.conf
 
 mount --bind /etc/resolv.conf etc/resolv.conf
+
 echo 'slackpkg update ...'
 chroot . sh -c 'yes y | /usr/sbin/slackpkg -batch=on -default_answer=y update'
+
 echo 'slackpkg upgrade-all ...'
 chroot . sh -c '/usr/sbin/slackpkg -batch=on -default_answer=y upgrade-all'
 
 # ---- Cleanup ----
-set +x
 rm -rf var/lib/slackpkg/*
 rm -rf usr/share/locale/*
 rm -rf usr/man/*
-find usr/share/terminfo/ -type f ! -name 'linux' -a ! -name 'xterm' -a ! -name 'screen.linux' -exec rm -f "{}" \;
+find usr/share/terminfo/ -type f \
+	! -name 'linux' \
+	! -name 'xterm' \
+	! -name 'screen.linux' \
+	-delete
+
 umount "$ROOTFS/dev"
 rm -f dev/* # containers should expect the kernel API (`mount -t devtmpfs none /dev`)
 umount etc/resolv.conf
 
+echo "Packaging ${CWD}/${RELEASE}.tar.gz ..."
 tar --numeric-owner -czf "${CWD}/${RELEASE}.tar.gz" .
 ls -sh "${CWD}/${RELEASE}.tar.gz"
 
-for dir in cdrom dev sys proc; do
-	if mount | grep -q "$ROOTFS/$dir"; then
-		umount "$ROOTFS/$dir"
-	fi
-done
+echo "Done."
