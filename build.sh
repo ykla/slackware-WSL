@@ -142,6 +142,7 @@ base_pkgs="a/aaa_base \
 	a/pkgtools \
 	a/shadow \
 	a/tar \
+ a/dcron \
 	a/xz \
 	a/bash \
 	a/etc \
