@@ -19,13 +19,13 @@ RELEASE		:= $(RELEASENAME)-$(VERSION)
 CACHEFS		:= /tmp/$(NAME)/$(RELEASE)
 ROOTFS		:= /tmp/rootfs-$(RELEASE)
 
-all: mkimage-slackware.sh
+all: build.sh
 	for version in $(VERSIONS) ; do \
 		$(MAKE) $(RELEASENAME)-$${version}.tar.gz && \
 		$(MAKE) VERSION=$${version} clean; \
 	done
 
-$(RELEASENAME)-%.tar.gz: mkimage-slackware.sh
+$(RELEASENAME)-%.tar.gz: build.sh
 	sudo \
 		VERSION="$*" \
 		USER="$(USER)" \
