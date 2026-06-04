@@ -2,7 +2,7 @@ LATEST		:= 15.0
 VERSION		:= $(LATEST)
 VERSIONS	:= 15.0 current
 NAME		:= slackware
-MIRROR		:= https://mirrors.slackware.com/slackware
+MIRROR		:= https://mirrors.ustc.edu.cn/slackware
 ifeq ($(shell uname -m),x86_64)
 ARCH := 64
 else ifeq ($(patsubst i%86,x86,$(shell uname -m)),x86)
