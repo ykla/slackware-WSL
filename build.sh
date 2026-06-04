@@ -20,13 +20,13 @@ case "${ARCH}" in
 		INITRD_PATH="installer/initrd-armv8.img"
 		PKG_SUBDIR="slackware"
 		MIRROR_SUBDIR="slackwarearm"
-		DEFAULT_MIRROR="https://mirrors.aptalaska.net/slackware"
+		DEFAULT_MIRROR="http://mirrors.aptalaska.net/slackware"
 		;;
 	*)
 		INITRD_PATH="isolinux/initrd.img"
 		PKG_SUBDIR="slackware${ARCH}"
 		MIRROR_SUBDIR=""
-		DEFAULT_MIRROR="https://mirrors.slackware.com/slackware"
+		DEFAULT_MIRROR="http://mirrors.slackware.com/slackware"
 		;;
 esac
 
