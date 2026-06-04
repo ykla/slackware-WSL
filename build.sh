@@ -483,11 +483,26 @@ LOG_STEP "Setting up CA certificates"
 mkdir -p etc/ssl/certs
 
 chroot . sh -c '
+	export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+	export LD_LIBRARY_PATH=/lib:/usr/lib:/lib64:/usr/lib64
+
+	# 尝试执行 CA 更新工具
 	if command -v update-ca-certificates >/dev/null 2>&1; then
-		update-ca-certificates --fresh
+		update-ca-certificates --fresh || true
 	fi
 ' || true
 
+# ---- fallback：强制生成 CA bundle ----
+mkdir -p etc/ssl/certs
+
+if [[ ! -f etc/ssl/certs/ca-certificates.crt ]]; then
+	if [[ -f etc/ssl/cert.pem ]]; then
+		cp etc/ssl/cert.pem etc/ssl/certs/ca-certificates.crt
+	else
+		find etc/ssl/certs -name '*.pem' -exec cat {} + \
+			> etc/ssl/certs/ca-certificates.crt 2>/dev/null || true
+	fi
+fi
 if [[ ! -f etc/ssl/certs/ca-certificates.crt ]]; then
 	if [[ -f etc/ssl/cert.pem ]]; then
 		cp etc/ssl/cert.pem etc/ssl/certs/ca-certificates.crt
