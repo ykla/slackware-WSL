@@ -36,14 +36,56 @@ trap cleanup EXIT
 # ---- Functions ----
 
 # Download a file from the mirror and return its cdrom path
+# If the exact file 404s, attempts to find the latest version from the directory listing
 cacheit() {
 	local file="$1"
-	if [[ ! -f "${CACHEFS}/${file}" ]]; then
-		mkdir -p "$(dirname "${CACHEFS}/${file}")"
-		echo "Fetching ${MIRROR}/${RELEASE}/${file}" >&2
-		curl -fsSL -o "${CACHEFS}/${file}" "${MIRROR}/${RELEASE}/${file}"
+	if [[ -f "${CACHEFS}/${file}" ]]; then
+		echo "/cdrom/${file}"
+		return 0
 	fi
-	echo "/cdrom/${file}"
+
+	mkdir -p "$(dirname "${CACHEFS}/${file}")"
+	echo "Fetching ${MIRROR}/${RELEASE}/${file}" >&2
+	if curl -fsSL -o "${CACHEFS}/${file}" "${MIRROR}/${RELEASE}/${file}" 2>/dev/null; then
+		echo "/cdrom/${file}"
+		return 0
+	fi
+
+	rm -f "${CACHEFS}/${file}"
+
+	# Exact file not found — try to resolve latest version from directory listing
+	# e.g. slackware64/a/bash-5.3.009-x86_64-2.txz -> slackware64/a/
+	local dir_path
+	dir_path=$(dirname "${file}")
+	local pkg_prefix
+	# Extract package prefix: a/bash-5.3.009-x86_64-2.txz -> bash
+	pkg_prefix=$(basename "${file}" | sed 's/-[0-9].*//')
+
+	echo "WARN: ${file} not found, scanning ${dir_path}/ for ${pkg_prefix}..." >&2
+	local listing
+	listing=$(curl -fsSL "${MIRROR}/${RELEASE}/${dir_path}/" 2>/dev/null) || {
+		echo "ERROR: cannot list directory ${dir_path}/" >&2
+		return 1
+	}
+
+	# Find the latest .txz matching the package prefix
+	local latest
+	latest=$(echo "${listing}" | grep -oP "${pkg_prefix}-[^\"]+\.txz" | sort -V | tail -1) || true
+	if [[ -z "${latest}" ]]; then
+		echo "ERROR: no ${pkg_prefix} package found in ${dir_path}/" >&2
+		return 1
+	fi
+
+	echo "Found latest: ${dir_path}/${latest}" >&2
+	local alt_file="${dir_path}/${latest}"
+	if curl -fsSL -o "${CACHEFS}/${alt_file}" "${MIRROR}/${RELEASE}/${alt_file}" 2>/dev/null; then
+		echo "/cdrom/${alt_file}"
+		return 0
+	fi
+
+	echo "ERROR: failed to download ${alt_file}" >&2
+	rm -f "${CACHEFS}/${alt_file}"
+	return 1
 }
 
 # Fetch FILE_LIST from the mirror and extract package paths
@@ -193,9 +235,14 @@ for pkg in ${base_pkgs}; do
 		continue
 	fi
 
-	l_pkg=$(cacheit "${relbase}/${path}")
+	l_pkg=$(cacheit "${relbase}/${path}") || {
+		echo "SKIP: ${pkg} download failed, will be installed by slackpkg later" >&2
+		continue
+	}
 	echo "Installing ${pkg}..." >&2
-	PATH=/bin:/sbin:/usr/bin:/usr/sbin chroot . ${install_cmd} --root /mnt ${install_args} "${l_pkg}"
+	if ! PATH=/bin:/sbin:/usr/bin:/usr/sbin chroot . ${install_cmd} --root /mnt ${install_args} "${l_pkg}"; then
+		echo "WARN: ${pkg} install failed, will be retried by slackpkg" >&2
+	fi
 done
 
 # ---- System Configuration ----
