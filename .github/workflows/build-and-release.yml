@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: 构建镜像 (${{ matrix.version }})
-        run: sudo make VERSION=${{ matrix.version }}
+        run: sudo VERSION=${{ matrix.version }} bash build.sh
 
       - name: 上传产物 (${{ matrix.version }})
         uses: actions/upload-artifact@v4

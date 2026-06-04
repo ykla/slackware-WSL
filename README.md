@@ -79,13 +79,13 @@ just make it.
 运行 make 命令。
 
 ```
-sudo make VERSION=14.2
+sudo make VERSION=15.0
 ```
 
 ## TODOs
 
-- [ ] merge get_paths.sh and mkimage-slackware.sh
-- [ ] read, understand, and cleanup mkimage-slackware.sh
+- [x] merge get_paths.sh and mkimage-slackware.sh
+- [x] read, understand, and cleanup mkimage-slackware.sh
 - [ ] maybe rewrite this script with python or put them all in a makefile? seems unnecessary but should be fun.
 
 ## Contributing
