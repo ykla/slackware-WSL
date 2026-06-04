@@ -156,6 +156,7 @@ base_pkgs="a/aaa_base \
 	l/zlib \
 	ap/nano \
 	a/elvis \
+	ap/less \
 	ap/slackpkg \
 	l/ncurses \
 	a/bin \
@@ -183,7 +184,40 @@ base_pkgs="a/aaa_base \
 	n/iproute2 \
 	n/openssl \
 	l/glibc-i18n \
-	a/glibc-zoneinfo"
+	a/glibc-zoneinfo \
+	n/rsync \
+	l/lz4 \
+	l/xxhash \
+	l/popt \
+	l/libgpg-error \
+	l/libgcrypt \
+	l/libassuan \
+	l/libksba \
+	l/npth \
+	l/libssh2 \
+	l/nghttp2 \
+	l/brotli \
+	l/libidn2 \
+	l/zstd \
+	l/attr \
+	l/acl \
+	l/expat \
+	l/gdbm \
+	l/jsoncpp \
+	l/libarchive \
+	l/libcap \
+	l/libffi \
+	l/libmnl \
+	l/libuv \
+	l/lzo \
+	l/mpdecimal \
+	l/rhash \
+	ap/db48 \
+	ap/pinentry \
+	ap/sqlite \
+	d/cmake \
+	d/perl \
+	d/python3"
 
 # ---- Build ----
 mkdir -p "$ROOTFS" "$CACHEFS"
@@ -375,6 +409,19 @@ if [[ -d /etc/pki/tls ]]; then
 	cp -a /etc/pki/tls/* etc/pki/tls/ 2>/dev/null || true
 fi
 
+# Regenerate CA certificate bundle inside chroot
+# This creates /etc/ssl/certs/ca-certificates.crt which wget uses for verification
+chroot . /usr/sbin/update-ca-certificates --fresh 2>/dev/null || true
+
+# Ensure wget uses the system CA bundle
+if [[ -f etc/wgetrc ]]; then
+	if ! grep -q 'ca_certificate' etc/wgetrc 2>/dev/null; then
+		echo 'ca_certificate = /etc/ssl/certs/ca-certificates.crt' >> etc/wgetrc
+	fi
+else
+	echo 'ca_certificate = /etc/ssl/certs/ca-certificates.crt' > etc/wgetrc
+fi
+
 mount --bind /etc/resolv.conf etc/resolv.conf
 
 # Import GPG key before update
@@ -386,6 +433,9 @@ chroot . sh -c '/usr/sbin/slackpkg -batch=on -default_answer=y update'
 
 echo 'slackpkg upgrade-all ...'
 chroot . sh -c '/usr/sbin/slackpkg -batch=on -default_answer=y upgrade-all'
+
+echo 'slackpkg install-new ...'
+chroot . sh -c '/usr/sbin/slackpkg -batch=on -default_answer=y install-new' || true
 
 # ---- Cleanup ----
 rm -rf var/lib/slackpkg/*
