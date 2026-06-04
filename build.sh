@@ -127,6 +127,11 @@ base_pkgs="a/aaa_base \
 	l/libpsl \
 	n/wget \
 	n/gnupg \
+	n/ca-certificates \
+	n/curl \
+	l/readline \
+	l/zlib \
+	ap/nano \
 	a/elvis \
 	ap/slackpkg \
 	l/ncurses \
