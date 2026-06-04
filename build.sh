@@ -536,7 +536,11 @@ fi
 
 # Post-slackpkg dependency check
 LOG_STEP "Post-slackpkg dependency check"
-missing_libs2=$(PATH=/bin:/sbin:/usr/bin:/usr/sbin chroot . ldd /mnt/usr/bin/* /mnt/usr/sbin/* /mnt/bin/* /mnt/sbin/* 2>/dev/null | grep 'not found' | sort -u || true)
+
+missing_libs2=$(find /mnt/usr/bin /mnt/usr/sbin /mnt/bin /mnt/sbin -maxdepth 1 -type f -executable 2>/dev/null | \
+	xargs -r -I {} chroot . env PATH=/bin:/sbin:/usr/bin:/usr/sbin ldd {} 2>/dev/null | \
+	grep 'not found' | sort -u || true)
+
 if [[ -n "${missing_libs2}" ]]; then
 	echo "WARNING: The following shared libraries are still missing after slackpkg:" >&2
 	echo "${missing_libs2}" >&2
@@ -545,9 +549,13 @@ else
 fi
 
 # List all installed packages
-installed_count=$(ls /mnt/var/log/packages/ 2>/dev/null | wc -l)
-echo "Total installed packages: ${installed_count}" >&2
+if [[ -d "/mnt/var/log/packages/" ]]; then
+	installed_count=$(find /mnt/var/log/packages/ -maxdepth 1 -type f 2>/dev/null | wc -l || echo 0)
+else
+	installed_count=0
+fi
 
+echo "Total installed packages: ${installed_count}" >&2
 # ---- Cleanup ----
 rm -rf var/lib/slackpkg/*
 rm -rf usr/share/locale/*
