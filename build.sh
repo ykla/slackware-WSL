@@ -366,8 +366,9 @@ download_ok=$(find "${CACHEFS}/${PKG_SUBDIR}" -name '*.txz' 2>/dev/null | wc -l)
 echo "Download summary: ${download_ok} packages cached in ${CACHEFS}/${PKG_SUBDIR}" >&2
 
 # Step 3: install packages sequentially
-LOG_STEP "Installing ${base_pkgs_count} base packages"
 base_pkgs_count=$(echo "${base_pkgs}" | wc -w)
+LOG_STEP "Installing ${base_pkgs_count} base packages"
+
 install_ok=0
 install_fail=0
 install_skip=0
